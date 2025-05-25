@@ -24,8 +24,8 @@ export const metadata = {
     images: [
       {
         url: "https://pub-6e6d79017ca54282b1e97d020db56f25.r2.dev/thumbnail-relationshipreflection.png",
-        width: 1200,
-        height: 630,
+        width: 1600,
+        height: 600,
         alt: "Relationship Reflection Tool - Build stronger relationships through guided reflection",
       },
     ],
