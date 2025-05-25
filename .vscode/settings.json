@@ -12,5 +12,15 @@
     "less.validate": false,
     "css.lint.unknownAtRules": "ignore",
     "scss.lint.unknownAtRules": "ignore",
-    "less.lint.unknownAtRules": "ignore"
+    "less.lint.unknownAtRules": "ignore",
+    "markdownlint.config": {
+        "MD029": false,
+        "MD040": false,
+        "MD022": false,
+        "MD032": false,
+        "MD031": false
+    },
+    "markdownlint.ignore": [
+        "**/README.md"
+    ]
 }
