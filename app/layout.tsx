@@ -14,8 +14,30 @@ const playfair = Playfair_Display({
 
 export const metadata = {
   title: "Relationship Reflection Tool",
-  description: "A visual tool to reflect on relationship dynamics",
-  generator: 'v0.dev'
+  description: "A comprehensive relationship reflection tool designed to help individuals and couples gain deeper insights into their relationships through structured prompts and personalized insights.",
+  generator: 'v0.dev',
+  openGraph: {
+    title: "Relationship Reflection Tool",
+    description: "A comprehensive relationship reflection tool designed to help individuals and couples gain deeper insights into their relationships through structured prompts and personalized insights.",
+    url: "https://github.com/yourusername/relationship-reflection-tool",
+    siteName: "Relationship Reflection Tool",
+    images: [
+      {
+        url: "https://pub-6e6d79017ca54282b1e97d020db56f25.r2.dev/thumbnail-relationshipreflection.png",
+        width: 1200,
+        height: 630,
+        alt: "Relationship Reflection Tool - Build stronger relationships through guided reflection",
+      },
+    ],
+    locale: "en_US",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Relationship Reflection Tool",
+    description: "A comprehensive relationship reflection tool designed to help individuals and couples gain deeper insights into their relationships through structured prompts and personalized insights.",
+    images: ["https://pub-6e6d79017ca54282b1e97d020db56f25.r2.dev/thumbnail-relationshipreflection.png"],
+  },
 }
 
 export default function RootLayout({
