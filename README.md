@@ -1,10 +1,12 @@
 # Relationship Reflection Tool
 
+![Relationship Reflection Tool](https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?q=80&w=400&auto=format&fit=crop)
+
 ## Project Overview
 
 This repository contains a comprehensive relationship reflection tool designed to help individuals and couples gain deeper insights into their relationships. The application provides structured prompts, guided reflections, and personalized insights to foster better communication and understanding in relationships.
 
-## Features
+### Features
 
 - **Interactive Reflection Prompts**: Thoughtfully crafted questions to guide relationship introspection
 - **Personalized Insights**: AI-powered analysis and recommendations based on user responses
@@ -32,29 +34,30 @@ This repository contains a comprehensive relationship reflection tool designed t
 
 ### Installation
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/stynerdev225/relationship-reflection-tool.git
-   cd relationship-reflection-tool
-   ```
+1. Clone the repository
 
-2. **Install dependencies**
-   ```bash
-   npm install
-   # or
-   yarn install
-   ```
+```bash
+git clone https://github.com/yourusername/relationship-reflection-tool.git
+cd relationship-reflection-tool
+```
 
-3. **Run the development server**
-   ```bash
-   npm run dev
-   # or
-   yarn dev
-   ```
+2. Install dependencies
 
-4. **Open your browser**
-   
-   Navigate to [http://localhost:3000](http://localhost:3000) to view the application
+```bash
+npm install
+# or
+yarn install
+```
+
+3. Run the development server
+
+```bash
+npm run dev
+# or
+yarn dev
+```
+
+4. Open [http://localhost:3000](http://localhost:3000) in your browser
 
 ## Project Structure
 
@@ -100,7 +103,6 @@ relationship-reflection-tool/
 
 ### Mobile Responsiveness
 Special attention has been paid to mobile optimization:
-
 - Implemented responsive text wrapping for headings
 - Added comprehensive overflow-x prevention
 - Configured proper viewport handling for mobile devices
@@ -154,12 +156,11 @@ npm start
 
 © 2025 Relationship Reflection Tool. All rights reserved.
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Support
 
 For questions, issues, or feature requests, please:
-
 - Open an issue in this repository
 - Contact the development team
 - Check the documentation for common solutions
@@ -167,3 +168,4 @@ For questions, issues, or feature requests, please:
 ---
 
 *This project was created with care to help people build stronger, more understanding relationships. We believe that reflection and communication are the foundations of healthy relationships.*
+Footer
