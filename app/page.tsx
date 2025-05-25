@@ -1,0 +1,1224 @@
+"use client"
+
+import { useState, useEffect, useCallback } from "react"
+import {
+  HeartIcon,
+  Share2Icon,
+  PrinterIcon,
+  FileDown,
+  FlameIcon,
+  WrenchIcon,
+  LeafIcon,
+  LightbulbIcon,
+  HelpCircleIcon,
+  CheckCircleIcon,
+  StarIcon,
+  AlertTriangleIcon,
+  TrendingUpIcon,
+  Loader2,
+  Info,
+} from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Card } from "@/components/ui/card"
+import { Progress } from "@/components/ui/progress"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { analyzeReflection, createPersonalizedSuggestions, ReflectionAnalysis, SuggestionResponse } from "@/lib/openrouter-api"
+import { InsightCard } from "@/components/insight-card"
+import { generatePersonalizedStynerFeedback } from "@/lib/reflectionUtils"
+import { ApiStatusNotification } from "@/components/api-status-notification"
+
+export default function RelationshipReflectionTool() {
+  // State for reflection text inputs
+  const [misalignedText, setMisalignedText] = useState("")
+  const [emergingText, setEmergingText] = useState("")
+  const [uncertainText, setUncertainText] = useState("")
+  const [hiddenNeeds, setHiddenNeeds] = useState("")
+  const [healingOpportunities, setHealingOpportunities] = useState("")
+  // State for draggable heart circle
+  const [heartPosition, setHeartPosition] = useState(0)
+  const [isDragging, setIsDragging] = useState(false)
+  // State for AI analysis
+  const [misalignedAnalysis, setMisalignedAnalysis] = useState<ReflectionAnalysis>({ score: 0, insights: "", suggestions: "" })
+  const [emergingAnalysis, setEmergingAnalysis] = useState<ReflectionAnalysis>({ score: 0, insights: "", suggestions: "" })
+  const [uncertainAnalysis, setUncertainAnalysis] = useState<ReflectionAnalysis>({ score: 0, insights: "", suggestions: "" })
+  const [isAnalyzing, setIsAnalyzing] = useState<{ [key: string]: boolean }>({ misaligned: false, emerging: false, uncertain: false })
+  const [debounceTimers, setDebounceTimers] = useState<{ [key: string]: NodeJS.Timeout | null }>({ misaligned: null, emerging: null, uncertain: null })
+  const [aiSuggestions, setAiSuggestions] = useState<SuggestionResponse[]>([])
+
+  // AI analysis function
+  const analyzeText = useCallback(async (type: 'misaligned' | 'emerging' | 'uncertain') => {
+    const textMap = {
+      'misaligned': misalignedText,
+      'emerging': emergingText,
+      'uncertain': uncertainText
+    }
+
+    const text = textMap[type]
+    if (text.trim().length < 10) return
+
+    setIsAnalyzing(prev => ({ ...prev, [type]: true }))
+
+    try {
+      const analysis = await analyzeReflection(text, type)
+
+      switch (type) {
+        case 'misaligned':
+          setMisalignedAnalysis(analysis)
+          break
+        case 'emerging':
+          setEmergingAnalysis(analysis)
+          break
+        case 'uncertain':
+          setUncertainAnalysis(analysis)
+          break
+      }
+    } catch (error) {
+      console.error(`Error analyzing ${type} text:`, error)
+    } finally {
+      setIsAnalyzing(prev => ({ ...prev, [type]: false }))
+    }
+  }, [misalignedText, emergingText, uncertainText])
+
+  // Get scores from AI analysis
+  const getMisalignedScore = () => misalignedAnalysis.score
+  const getEmergingScore = () => emergingAnalysis.score
+  const getUncertainScore = () => uncertainAnalysis.score
+
+  // Calculate overall reflection score from AI analysis
+  const getOverallScore = () => {
+    return Math.floor((getMisalignedScore() + getEmergingScore() + getUncertainScore()) / 3)
+  }
+
+  // Get overall reflection stage based on score
+  const getOverallStage = () => {
+    const score = getOverallScore()
+    if (score >= 80) return "Deep Insight"
+    if (score >= 60) return "Advanced Understanding"
+    if (score >= 30) return "Developing Awareness"
+    return "Beginning"
+  }
+
+  // Debounced text analysis
+  useEffect(() => {
+    if (debounceTimers.misaligned) clearTimeout(debounceTimers.misaligned)
+
+    if (misalignedText.trim().length > 10) {
+      setIsAnalyzing(prev => ({ ...prev, misaligned: true }))
+      setDebounceTimers(prev => ({
+        ...prev,
+        misaligned: setTimeout(() => analyzeText('misaligned'), 1500)
+      }))
+    } else if (misalignedText.trim().length === 0) {
+      // Reset analysis if field is cleared
+      setMisalignedAnalysis({ score: 0, insights: "", suggestions: "" })
+    }
+
+    return () => {
+      if (debounceTimers.misaligned) clearTimeout(debounceTimers.misaligned)
+    }
+  }, [misalignedText, analyzeText])
+
+  useEffect(() => {
+    if (debounceTimers.emerging) clearTimeout(debounceTimers.emerging)
+
+    if (emergingText.trim().length > 10) {
+      setIsAnalyzing(prev => ({ ...prev, emerging: true }))
+      setDebounceTimers(prev => ({
+        ...prev,
+        emerging: setTimeout(() => analyzeText('emerging'), 1500)
+      }))
+    } else if (emergingText.trim().length === 0) {
+      // Reset analysis if field is cleared
+      setEmergingAnalysis({ score: 0, insights: "", suggestions: "" })
+    }
+
+    return () => {
+      if (debounceTimers.emerging) clearTimeout(debounceTimers.emerging)
+    }
+  }, [emergingText, analyzeText])
+
+  useEffect(() => {
+    if (debounceTimers.uncertain) clearTimeout(debounceTimers.uncertain)
+
+    if (uncertainText.trim().length > 10) {
+      setIsAnalyzing(prev => ({ ...prev, uncertain: true }))
+      setDebounceTimers(prev => ({
+        ...prev,
+        uncertain: setTimeout(() => analyzeText('uncertain'), 1500)
+      }))
+    } else if (uncertainText.trim().length === 0) {
+      // Reset analysis if field is cleared
+      setUncertainAnalysis({ score: 0, insights: "", suggestions: "" })
+    }
+
+    return () => {
+      if (debounceTimers.uncertain) clearTimeout(debounceTimers.uncertain)
+    }
+  }, [uncertainText, analyzeText])
+
+  // Update suggestions when scores change
+  useEffect(() => {
+    let isMounted = true;
+    const updateSuggestions = async () => {
+      // Only update suggestions if we have at least one reflection with a score
+      if (misalignedAnalysis.score > 0 || emergingAnalysis.score > 0 || uncertainAnalysis.score > 0) {
+        try {
+          // Check if any analysis is in progress
+          const isAnyAnalyzing = isAnalyzing.misaligned || isAnalyzing.emerging || isAnalyzing.uncertain;
+
+          // If not analyzing and we have content to analyze, update suggestions
+          if (!isAnyAnalyzing &&
+            (misalignedText.trim() || emergingText.trim() || uncertainText.trim())) {
+
+            const suggestions = await createPersonalizedSuggestions(
+              misalignedText,
+              emergingText,
+              uncertainText,
+              getOverallScore()
+            );
+
+            if (isMounted) {
+              setAiSuggestions(suggestions);
+            }
+          }
+        } catch (error) {
+          console.error("Error updating suggestions:", error);
+        }
+      }
+    };
+
+    // Add a small delay to ensure all analyses are complete
+    const timer = setTimeout(() => {
+      updateSuggestions();
+    }, 500);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
+  }, [
+    misalignedAnalysis.score,
+    emergingAnalysis.score,
+    uncertainAnalysis.score,
+    isAnalyzing.misaligned,
+    isAnalyzing.emerging,
+    isAnalyzing.uncertain,
+    misalignedText,
+    emergingText,
+    uncertainText,
+    getOverallScore
+  ])
+
+  // Define suggestion type for TypeScript
+  type SuggestionType =
+    | "insight"
+    | "growth"
+    | "action"
+    | "celebrate"
+    | "caution"
+    | "beginning"
+    | "success"
+    | "progress"
+    | "encourage"
+    | "start";
+
+  // Generate a default suggestion when no AI suggestions are available
+  const getDefaultSuggestion = () => {
+    const overallScore = getOverallScore();
+
+    if (overallScore >= 80) {
+      return [{
+        type: "success",
+        title: "Excellent Self-Awareness",
+        message: "Your deep reflection shows strong emotional intelligence and commitment to growth."
+      }];
+    } else if (overallScore >= 60) {
+      return [{
+        type: "progress",
+        title: "Good Foundation",
+        message: "You're developing solid insights about your relationship dynamics."
+      }];
+    } else if (overallScore >= 30) {
+      return [{
+        type: "encourage",
+        title: "Building Awareness",
+        message: "Take time to reflect more deeply on each area for greater clarity."
+      }];
+    } else {
+      return [{
+        type: "start",
+        title: "Beginning Your Journey",
+        message: "Relationship reflection is a powerful tool for growth and understanding."
+      }];
+    }
+  }
+
+  // Get suggestions - use AI suggestions if available, otherwise use defaults
+  const suggestions = aiSuggestions.length > 0 ? aiSuggestions : getDefaultSuggestion()
+
+  // Handler for starting drag
+  const handleMouseDown = () => {
+    setIsDragging(true)
+  }
+
+  // Handler for dragging
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging) return
+
+    // Prevent default behavior to avoid text selection while dragging
+    e.preventDefault()
+
+    // Get the container width
+    const container = document.querySelector(".heart-container")
+    if (!container) return
+
+    const rect = container.getBoundingClientRect()
+    const containerWidth = rect.width
+    const leftOffset = rect.left
+
+    // Calculate position as percentage with smoother movement
+    let newPosition = ((e.clientX - leftOffset) / containerWidth) * 100
+
+    // Clamp position between -40% and 40% for a balanced range of movement
+    newPosition = Math.max(-40, Math.min(40, newPosition))
+
+    setHeartPosition(newPosition)
+  }
+
+  // Handler for ending drag
+  const handleMouseUp = () => {
+    setIsDragging(false)
+  }
+
+  // Handler for touch events (mobile)
+  const handleTouchStart = () => {
+    setIsDragging(true)
+  }
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!isDragging) return
+
+    const touch = e.touches[0]
+    const container = document.querySelector(".heart-container")
+    if (!container) return
+
+    const rect = container.getBoundingClientRect()
+    const containerWidth = rect.width
+    const leftOffset = rect.left
+
+    // Calculate position as percentage with smoother movement
+    let newPosition = ((touch.clientX - leftOffset) / containerWidth) * 100
+
+    // Clamp position between -40% and 40% for a balanced range of movement
+    newPosition = Math.max(-40, Math.min(40, newPosition))
+
+    setHeartPosition(newPosition)
+  }
+
+  const handleTouchEnd = () => {
+    setIsDragging(false)
+  }
+
+  return (
+    <div className="flex flex-col min-h-screen overflow-x-hidden">
+      {/* Navigation Bar with Border */}
+      <nav className="border-b-2 border-purple-300 bg-gradient-to-b from-white to-purple-50/80 backdrop-blur-sm sticky top-0 z-50 shadow-md">
+        <div className="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8">
+          <div className="flex justify-between h-14 md:h-16 items-center">
+            <div className="flex items-center">
+              <div className="bg-purple-100 p-1.5 rounded-full">
+                <HeartIcon className="h-4 w-4 md:h-5 md:w-5 text-purple-600" />
+              </div>
+              <span className="font-medium text-purple-800 ml-2 font-playfair italic text-sm md:text-base">Our Journey</span>
+            </div>
+            <div className="hidden md:flex items-center space-x-4">
+              <a href="#" className="text-sm text-slate-600 hover:text-purple-600 transition-colors font-medium">About</a>
+              <a href="#" className="text-sm text-slate-600 hover:text-purple-600 transition-colors font-medium">Tips</a>
+              <a href="#" className="text-sm text-slate-600 hover:text-purple-600 transition-colors font-medium">Resources</a>
+              <Button size="sm" variant="outline" className="ml-4 border-purple-300 text-purple-700 hover:bg-purple-50 shadow-sm">
+                <span className="mr-1">♥</span> Save Progress
+              </Button>
+            </div>
+            <div className="md:hidden">
+              <Button size="sm" variant="outline" className="border-purple-300 text-purple-700 hover:bg-purple-50 shadow-sm">
+                <span className="mr-1">♥</span> Save
+              </Button>
+            </div>
+          </div>
+        </div>
+      </nav>
+
+      <main className="flex-grow bg-gradient-to-br from-slate-50 to-blue-50 p-4 md:p-8 overflow-x-hidden">
+        <div className="max-w-6xl mx-auto overflow-x-hidden">
+          <ApiStatusNotification />
+          <header className="mb-8 text-center">
+            <h1 className="heading-main">
+              <span className="romance-text">Relationship</span> <span className="romance-text">Reflection</span>{" "}
+              <span className="romance-text">Tool</span>
+            </h1>
+            <style jsx>{`
+            /* Main heading styles */
+            .heading-main {
+              font-size: 1.75rem; /* Smaller on mobile */
+              margin-bottom: 1.5rem;
+              white-space: normal; /* Allow wrapping on mobile */
+              letter-spacing: 1px;
+              color: #4a5568;
+            }
+
+            /* Responsive font sizes */
+            @media (min-width: 640px) {
+              .heading-main {
+                font-size: 2.25rem;
+                margin-bottom: 2rem;
+                white-space: nowrap; /* Prevent wrapping on larger screens */
+              }
+            }
+
+            @media (min-width: 768px) {
+              .heading-main {
+                font-size: 2.75rem;
+              }
+            }
+
+            @media (min-width: 1024px) {
+              .heading-main {
+                font-size: 3.25rem;
+              }
+            }
+
+            /* Romantic wedding-style text */
+            .romance-text {
+              font-family: var(--font-playfair), 'Garamond', serif;
+              font-style: italic;
+              font-weight: 400;
+              text-transform: capitalize;
+              background-image: linear-gradient(to right, #7c3aed, #c084fc);
+              -webkit-background-clip: text;
+              -webkit-text-fill-color: transparent;
+              text-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            }
+          `}</style>
+          </header>
+
+          <div className="relative mb-16">
+            {/* Top Box - Core Needs */}
+            <Card className="w-full sm:w-[90%] md:w-4/5 mx-auto p-4 md:p-8 bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200 mb-20 sm:mb-24 md:mb-20 relative z-10 shadow-lg">
+              <div className="flex items-start md:items-center mb-3 md:mb-4">
+                <div className="bg-blue-200 p-2 md:p-3 rounded-full mr-2 md:mr-3 shrink-0">
+                  <FlameIcon className="h-5 w-5 md:h-6 md:w-6 text-blue-600" />
+                </div>
+                <div>
+                  <h2 className="text-lg md:text-2xl font-bold text-blue-800">Core Needs of This Relationship</h2>
+                  <p className="text-xs md:text-sm text-blue-600 italic mt-1">What must be true for us to thrive</p>
+                </div>
+              </div>
+              <div className="bg-white bg-opacity-90 rounded-lg p-3 md:p-5 border border-blue-200 shadow-sm">
+                <p className="font-semibold text-slate-800 mb-2 md:mb-3 text-base md:text-lg">
+                  Emotional safety, shared vision, and mutual commitment to growth.
+                </p>
+                <p className="text-slate-700 leading-relaxed text-sm md:text-base">
+                  I need to feel deeply safe being myself, knowing that we&apos;re heading in the same direction and showing up
+                  fully for each other, not just when it&apos;s easy.
+                </p>
+              </div>
+            </Card>
+
+            {/* Center Connector - Enhanced */}
+            <div className="absolute left-1/2 top-[260px] sm:top-[280px] md:top-[280px] transform -translate-x-1/2 z-20 heart-container"
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+              onMouseLeave={handleMouseUp}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}>
+              <div className="bg-gradient-to-r from-purple-100 to-pink-100 rounded-full p-3 md:p-4 border-2 border-purple-200 shadow-lg">
+                <div className="bg-white rounded-full p-2 md:p-3">
+                  <div
+                    className="h-16 w-16 sm:h-20 sm:w-20 md:h-24 md:w-24 rounded-full bg-gradient-to-r from-blue-400 via-purple-400 to-green-400 flex items-center justify-center shadow-inner cursor-grab active:cursor-grabbing transition-transform duration-100 ease-out"
+                    style={{ transform: `translateX(${heartPosition}%)` }}
+                    onMouseDown={handleMouseDown}
+                    onTouchStart={handleTouchStart}>
+                    <HeartIcon className="h-6 w-6 md:h-8 md:w-8 text-white" />
+                  </div>
+                </div>
+              </div>
+              <div className="text-center mt-2">
+                <h3 className="text-xs sm:text-sm font-bold text-purple-700">Where We Meet</h3>
+                <p className="text-xs text-purple-600">Shared Ground / Mutual Impact</p>
+              </div>
+
+              {/* Shared Ground Content - Desktop */}
+              <div className="hidden md:block mt-4 w-72 transform -translate-x-1/2 left-1/2 relative">
+                <div className="bg-white rounded-lg p-4 border border-purple-200 shadow-md">
+                  <ul className="text-sm text-slate-700 space-y-2">
+                    <li className="flex items-start">
+                      <span className="text-purple-500 mr-2">•</span>
+                      We challenge and inspire each other to grow.
+                    </li>
+                    <li className="flex items-start">
+                      <span className="text-purple-500 mr-2">•</span>
+                      When we&apos;re aligned, we feel like we can do anything — with trust, purpose, and peace.
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            {/* Connecting Lines - Top to Center */}
+            <div className="absolute left-1/4 top-[260px] sm:top-[280px] md:top-[240px] w-1/2 h-[120px] pointer-events-none z-0">
+              <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+                <defs>
+                  <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stopColor="#93c5fd" />
+                    <stop offset="50%" stopColor="#c084fc" />
+                    <stop offset="100%" stopColor="#86efac" />
+                  </linearGradient>
+                </defs>
+                <path
+                  d="M0,0 L50,100 L100,0"
+                  fill="none"
+                  stroke="url(#lineGradient)"
+                  strokeWidth="2"
+                  strokeDasharray="6 3"
+                />
+                <path
+                  d="M20,20 L50,100 L80,20"
+                  fill="none"
+                  stroke="url(#lineGradient)"
+                  strokeWidth="1"
+                  strokeDasharray="4 2"
+                  opacity="0.5"
+                />
+              </svg>
+            </div>
+
+            {/* Connecting Lines - Center to Bottom */}
+            <div className="absolute left-1/4 top-[420px] md:top-[480px] w-1/2 h-[200px] md:h-[240px] pointer-events-none z-0">
+              <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+                <defs>
+                  <linearGradient id="lineGradient2" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#c084fc" />
+                    <stop offset="30%" stopColor="#86efac" />
+                    <stop offset="70%" stopColor="#fbbf24" />
+                    <stop offset="100%" stopColor="#93c5fd" />
+                  </linearGradient>
+                </defs>
+                <path
+                  d="M50,0 L0,100 M50,0 L100,100"
+                  fill="none"
+                  stroke="url(#lineGradient2)"
+                  strokeWidth="2"
+                  strokeDasharray="6 3"
+                />
+                <path
+                  d="M50,10 L20,90 M50,10 L80,90"
+                  fill="none"
+                  stroke="url(#lineGradient2)"
+                  strokeWidth="1"
+                  strokeDasharray="4 2"
+                  opacity="0.5"
+                />
+              </svg>
+            </div>
+
+            <div className="flex flex-col md:flex-row gap-4 md:gap-6 mt-72 md:mt-96 relative z-10">
+              {/* Bottom Left Box - How I Show Up */}
+              <Card className="flex-1 p-4 md:p-8 bg-gradient-to-br from-green-50 to-emerald-100 border-green-200 shadow-lg">
+                <div className="flex items-start md:items-center mb-3 md:mb-4">
+                  <div className="bg-green-200 p-2 md:p-3 rounded-full mr-2 md:mr-3 shrink-0">
+                    <WrenchIcon className="h-5 w-5 md:h-6 md:w-6 text-green-600" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg md:text-xl font-bold text-green-800">How I Tend to Show Up</h2>
+                    <p className="text-xs md:text-sm text-green-600 italic mt-1">What I do, give, or embody</p>
+                  </div>
+                </div>
+                <div className="bg-white bg-opacity-90 rounded-lg p-3 md:p-5 border border-green-200 shadow-sm">
+                  <ul className="space-y-2 md:space-y-3 text-slate-700 text-sm md:text-base">
+                    <li className="flex items-start">
+                      <span className="text-green-500 mr-2 mt-1">•</span>I protect and provide — emotionally and
+                      practically.
+                    </li>
+                    <li className="flex items-start">
+                      <span className="text-green-500 mr-2 mt-1">•</span>I take initiative, make plans, and hold
+                      structure.
+                    </li>
+                    <li className="flex items-start">
+                      <span className="text-green-500 mr-2 mt-1">•</span>I express love through action and presence, not
+                      always words.
+                    </li>
+                    <li className="flex items-start">
+                      <span className="text-green-500 mr-2 mt-1">•</span>I lead, but I also listen deeply.
+                    </li>
+                  </ul>
+                </div>
+              </Card>
+
+              {/* Bottom Right Box - How They Show Up */}
+              <Card className="flex-1 p-4 md:p-8 bg-gradient-to-br from-amber-50 to-orange-100 border-amber-200 shadow-lg">
+                <div className="flex items-start md:items-center mb-3 md:mb-4">
+                  <div className="bg-amber-200 p-2 md:p-3 rounded-full mr-2 md:mr-3 shrink-0">
+                    <LeafIcon className="h-5 w-5 md:h-6 md:w-6 text-amber-600" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg md:text-xl font-bold text-amber-800">How They Tend to Show Up</h2>
+                    <p className="text-xs md:text-sm text-amber-600 italic mt-1">What they bring or create</p>
+                  </div>
+                </div>
+                <div className="bg-white bg-opacity-90 rounded-lg p-3 md:p-5 border border-amber-200 shadow-sm">
+                  <ul className="space-y-2 md:space-y-3 text-slate-700 text-sm md:text-base">
+                    <li className="flex items-start">
+                      <span className="text-amber-500 mr-2 mt-1">•</span>
+                      She brings warmth, grounding energy, and emotional depth.
+                    </li>
+                    <li className="flex items-start">
+                      <span className="text-amber-500 mr-2 mt-1">•</span>
+                      She holds faith in the vision, even when things get uncertain.
+                    </li>
+                    <li className="flex items-start">
+                      <span className="text-amber-500 mr-2 mt-1">•</span>
+                      She nurtures, listens, and softens the space with care.
+                    </li>
+                    <li className="flex items-start">
+                      <span className="text-amber-500 mr-2 mt-1">•</span>
+                      Her presence reminds me of why I lead with heart.
+                    </li>
+                  </ul>
+                </div>
+              </Card>
+            </div>
+
+            {/* Four bottom boxes positioned symmetrically under their parent boxes */}
+            <div className="relative mt-16 mb-8">
+              {/* Container for both pairs of boxes */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full">
+
+                {/* Left side: Boxes under "How I Tend to Show Up" */}
+                <div className="relative">
+                  {/* Connecting Lines from "How I Tend to Show Up" to its two boxes */}
+                  <div className="absolute left-1/2 top-[-60px] transform -translate-x-1/2 w-full h-[120px] pointer-events-none z-0">
+                    <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+                      <defs>
+                        <linearGradient id="lineGradient4" x1="0%" y1="0%" x2="100%" y2="100%">
+                          <stop offset="0%" stopColor="#10b981" />
+                          <stop offset="25%" stopColor="#06b6d4" />
+                          <stop offset="50%" stopColor="#8b5cf6" />
+                          <stop offset="75%" stopColor="#f59e0b" />
+                          <stop offset="100%" stopColor="#ef4444" />
+                        </linearGradient>
+                      </defs>
+                      {/* Lines from center to each box */}
+                      <path
+                        d="M50,0 L25,100 M50,0 L75,100"
+                        fill="none"
+                        stroke="url(#lineGradient4)"
+                        strokeWidth="2"
+                        strokeDasharray="8 4"
+                        opacity="0.7"
+                      />
+                      {/* Horizontal connection between the boxes */}
+                      <path
+                        d="M25,100 L75,100"
+                        fill="none"
+                        stroke="url(#lineGradient4)"
+                        strokeWidth="2"
+                        strokeDasharray="6 3"
+                        opacity="0.8"
+                      />
+                    </svg>
+                  </div>
+
+                  {/* Two boxes centered under "How I Tend to Show Up" */}
+                  <div className="flex flex-col md:flex-row gap-4 justify-center">
+                    {/* Hidden Needs or Unspoken Desires */}
+                    <Card className="w-full md:w-[380px] p-4 md:p-8 bg-gradient-to-br from-cyan-50 to-teal-100 border-cyan-200 shadow-lg relative z-10 flex flex-col">
+                      <div className="flex items-start md:items-center mb-3 md:mb-4">
+                        <div className="bg-cyan-200 p-2 md:p-3 rounded-full mr-2 md:mr-3 shrink-0">
+                          <HelpCircleIcon className="h-5 w-5 md:h-6 md:w-6 text-cyan-600" />
+                        </div>
+                        <div>
+                          <h2 className="text-base md:text-lg font-bold text-cyan-800">Hidden Needs or Unspoken Desires</h2>
+                          <p className="text-xs text-cyan-600 italic mt-1">What I long for but rarely voice</p>
+                        </div>
+                      </div>
+                      <div className="bg-white bg-opacity-90 rounded-lg p-3 md:p-5 border border-cyan-200 shadow-sm flex-grow">
+                        <ul className="space-y-2 md:space-y-3 text-slate-700 text-sm md:text-base">
+                          <li className="flex items-start">
+                            <span className="text-cyan-500 mr-2 mt-1">•</span>
+                            More emotional safety to be vulnerable without fear of judgment or withdrawal.
+                          </li>
+                          <li className="flex items-start">
+                            <span className="text-cyan-500 mr-2 mt-1">•</span>
+                            To feel chosen and prioritized, not just accommodated or managed.
+                          </li>
+                          <li className="flex items-start">
+                            <span className="text-cyan-500 mr-2 mt-1">•</span>
+                            Deeper physical and emotional intimacy that feels natural, not obligated.
+                          </li>
+                          <li className="flex items-start">
+                            <span className="text-cyan-500 mr-2 mt-1">•</span>
+                            To be seen and valued for who I am beyond what I provide or accomplish.
+                          </li>
+                        </ul>
+                      </div>
+                    </Card>
+
+                    {/* Opportunities for Healing or Growth */}
+                    <Card className="w-full md:w-[380px] p-4 md:p-8 bg-gradient-to-br from-emerald-50 to-green-100 border-emerald-200 shadow-lg relative z-10 flex flex-col">
+                      <div className="flex items-start md:items-center mb-3 md:mb-4">
+                        <div className="bg-emerald-200 p-2 md:p-3 rounded-full mr-2 md:mr-3 shrink-0">
+                          <TrendingUpIcon className="h-5 w-5 md:h-6 md:w-6 text-emerald-600" />
+                        </div>
+                        <div>
+                          <h2 className="text-base md:text-lg font-bold text-emerald-800">Opportunities for Healing or Growth</h2>
+                          <p className="text-xs text-emerald-600 italic mt-1">Where transformation awaits</p>
+                        </div>
+                      </div>
+                      <div className="bg-white bg-opacity-90 rounded-lg p-3 md:p-5 border border-emerald-200 shadow-sm flex-grow">
+                        <ul className="space-y-2 md:space-y-3 text-slate-700 text-sm md:text-base">
+                          <li className="flex items-start">
+                            <span className="text-emerald-500 mr-2 mt-1">•</span>
+                            Learning to ask directly for what I need instead of hoping it will be intuited.
+                          </li>
+                          <li className="flex items-start">
+                            <span className="text-emerald-500 mr-2 mt-1">•</span>
+                            Releasing the burden of being the primary emotional caretaker and problem-solver.
+                          </li>
+                          <li className="flex items-start">
+                            <span className="text-emerald-500 mr-2 mt-1">•</span>
+                            Trusting that I can be imperfect, uncertain, or struggling without losing love.
+                          </li>
+                          <li className="flex items-start">
+                            <span className="text-emerald-500 mr-2 mt-1">•</span>
+                            Creating space for mutual vulnerability and shared emotional responsibility.
+                          </li>
+                        </ul>
+                      </div>
+                    </Card>
+                  </div>
+                </div>
+
+                {/* Right side: Boxes under "How They Tend to Show Up" */}
+                <div className="relative">
+                  {/* Connecting Lines from "How They Tend to Show Up" to its two boxes */}
+                  <div className="absolute left-1/2 top-[-60px] transform -translate-x-1/2 w-full h-[120px] pointer-events-none z-0">
+                    <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+                      <defs>
+                        <linearGradient id="lineGradient3" x1="0%" y1="0%" x2="100%" y2="100%">
+                          <stop offset="0%" stopColor="#6366f1" />
+                          <stop offset="25%" stopColor="#86efac" />
+                          <stop offset="50%" stopColor="#c084fc" />
+                          <stop offset="75%" stopColor="#f59e0b" />
+                          <stop offset="100%" stopColor="#ef4444" />
+                        </linearGradient>
+                      </defs>
+                      {/* Lines from center to each box */}
+                      <path
+                        d="M50,0 L25,100 M50,0 L75,100"
+                        fill="none"
+                        stroke="url(#lineGradient3)"
+                        strokeWidth="2"
+                        strokeDasharray="8 4"
+                        opacity="0.7"
+                      />
+                      {/* Horizontal connection between the boxes */}
+                      <path
+                        d="M25,100 L75,100"
+                        fill="none"
+                        stroke="url(#lineGradient3)"
+                        strokeWidth="2"
+                        strokeDasharray="6 3"
+                        opacity="0.8"
+                      />
+                    </svg>
+                  </div>
+
+                  {/* Two boxes centered under "How They Tend to Show Up" */}
+                  <div className="flex flex-col md:flex-row gap-4 justify-center">
+                    {/* Kindness Shaped by Tradition */}
+                    <Card className="w-full md:w-[380px] p-4 md:p-8 bg-gradient-to-br from-indigo-50 to-blue-100 border-indigo-200 shadow-lg relative z-10 flex flex-col">
+                      <div className="flex items-start md:items-center mb-3 md:mb-4">
+                        <div className="bg-indigo-200 p-2 md:p-3 rounded-full mr-2 md:mr-3 shrink-0">
+                          <HeartIcon className="h-5 w-5 md:h-6 md:w-6 text-indigo-600" />
+                        </div>
+                        <div>
+                          <h2 className="text-base md:text-lg font-bold text-indigo-800">Kindness Shaped by Tradition</h2>
+                          <p className="text-xs text-indigo-600 italic mt-1">(Not Necessarily Personal Care)</p>
+                        </div>
+                      </div>
+                      <div className="bg-white bg-opacity-90 rounded-lg p-3 md:p-5 border border-indigo-200 shadow-sm flex-grow">
+                        <ul className="space-y-2 md:space-y-3 text-slate-700 text-sm md:text-base">
+                          <li className="flex items-start">
+                            <span className="text-indigo-500 mr-2 mt-1">•</span>
+                            Cultural expectations around hospitality and service that feel automatic.
+                          </li>
+                          <li className="flex items-start">
+                            <span className="text-indigo-500 mr-2 mt-1">•</span>
+                            Acts of care that mirror family patterns rather than personal choice.
+                          </li>
+                          <li className="flex items-start">
+                            <span className="text-indigo-500 mr-2 mt-1">•</span>
+                            Gestures that feel like &quot;the right thing to do&quot; rather than heart-driven giving.
+                          </li>
+                          <li className="flex items-start">
+                            <span className="text-indigo-500 mr-2 mt-1">•</span>
+                            Kindness that flows from social conditioning more than intimate knowing.
+                          </li>
+                        </ul>
+                      </div>
+                    </Card>
+
+                    {/* Where Criticism or Friction Appears */}
+                    <Card className="w-full md:w-[380px] p-4 md:p-8 bg-gradient-to-br from-red-50 to-pink-100 border-red-200 shadow-lg relative z-10 flex flex-col">
+                      <div className="flex items-start md:items-center mb-3 md:mb-4">
+                        <div className="bg-red-200 p-2 md:p-3 rounded-full mr-2 md:mr-3 shrink-0">
+                          <AlertTriangleIcon className="h-5 w-5 md:h-6 md:w-6 text-red-600" />
+                        </div>
+                        <div>
+                          <h2 className="text-base md:text-lg font-bold text-red-800">Where Criticism or Friction Appears</h2>
+                          <p className="text-xs text-red-600 italic mt-1">Tensions and challenges</p>
+                        </div>
+                      </div>
+                      <div className="bg-white bg-opacity-90 rounded-lg p-3 md:p-5 border border-red-200 shadow-sm flex-grow">
+                        <ul className="space-y-2 md:space-y-3 text-slate-700 text-sm md:text-base">
+                          <li className="flex items-start">
+                            <span className="text-red-500 mr-2 mt-1">•</span>
+                            When different speeds of decision-making create impatience or frustration.
+                          </li>
+                          <li className="flex items-start">
+                            <span className="text-red-500 mr-2 mt-1">•</span>
+                            Misaligned expectations about emotional processing and communication timing.
+                          </li>
+                          <li className="flex items-start">
+                            <span className="text-red-500 mr-2 mt-1">•</span>
+                            Friction around independence versus togetherness in daily choices.
+                          </li>
+                          <li className="flex items-start">
+                            <span className="text-red-500 mr-2 mt-1">•</span>
+                            Different approaches to handling stress that can create disconnection.
+                          </li>
+                        </ul>
+                      </div>
+                    </Card>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+
+          </div>
+
+          {/* Shared Ground Content - Mobile Only */}
+          <div className="md:hidden mb-6 md:mb-8">
+            <Card className="p-4 bg-gradient-to-br from-purple-50 to-pink-100 border-purple-200 shadow-lg">
+              <div className="flex items-center mb-2">
+                <HeartIcon className="h-4 w-4 sm:h-5 sm:w-5 text-purple-600 mr-2" />
+                <h3 className="text-sm sm:text-base font-bold text-purple-700">Shared Ground / Mutual Impact</h3>
+              </div>
+              <div className="bg-white bg-opacity-90 rounded-lg p-3 border border-purple-200">
+                <ul className="space-y-2 text-slate-700 text-xs sm:text-sm">
+                  <li className="flex items-start">
+                    <span className="text-purple-500 mr-2">•</span>
+                    We challenge and inspire each other to grow.
+                  </li>
+                  <li className="flex items-start">
+                    <span className="text-purple-500 mr-2">•</span>
+                    When we're aligned, we feel like we can do anything — with trust, purpose, and peace.
+                  </li>
+                </ul>
+              </div>
+            </Card>
+          </div>
+
+          {/* Reflection Tool Title */}
+          <div className="mb-4 md:mb-6 text-center">
+            <h2 className="text-2xl md:text-3xl lg:text-5xl font-bold">
+              <span className="font-serif italic tracking-wide font-light" style={{
+                background: "linear-gradient(to right, #a78bfa, #ec4899)",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+                textShadow: "0 2px 4px rgba(0,0,0,0.05)",
+                fontFamily: "Didot, 'Playfair Display', 'Cormorant Garamond', serif"
+              }}>Unfiltered Relationship Mirror</span>
+            </h2>
+            <p className="text-sm md:text-base text-purple-800 mt-2 md:mt-3 font-medium">
+              Confront these dimensions with radical honesty
+            </p>
+            <p className="text-xs md:text-sm text-slate-700 mt-1 md:mt-2">
+              Growth happens at the edge of comfort. This tool will challenge you with direct feedback.
+            </p>
+          </div>
+
+          {/* AI Analysis Information */}
+          <Card className="mb-6 md:mb-8 p-3 md:p-4 border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50 shadow-sm">
+            <div className="flex items-start">
+              <div className="bg-blue-100 p-1.5 md:p-2 rounded-full mr-2 md:mr-3 shrink-0 mt-0.5">
+                <LightbulbIcon className="h-4 w-4 md:h-5 md:w-5 text-blue-600" />
+              </div>
+              <div>
+                <h3 className="text-sm md:text-md font-bold text-blue-800 mb-1 flex items-center">
+                  Soul-Mirroring Reflections
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="ml-1 cursor-help">
+                          <Info className="h-3 w-3 md:h-3.5 md:w-3.5 text-blue-400" />
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent className="w-72 md:w-80">
+                        <p className="text-xs">This tool uses the Claude 3 Opus model via OpenRouter API to reflect back your relationship truths through a poetic, soulful lens - like finding your journal pages written by someone who knows your unspoken thoughts.</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </h3>
+                <p className="text-xs md:text-sm text-blue-700 font-medium">
+                  As you write, our reflection mirror will offer voice-note-like whispers from the heart:
+                </p>
+                <ul className="mt-1.5 md:mt-2 space-y-0.5 md:space-y-1 text-2xs md:text-xs text-blue-600">
+                  <li className="flex items-start">
+                    <span className="text-blue-400 mr-1.5">•</span>
+                    <span><strong>Heart-Sensing</strong> that measures the depth of your self-honesty</span>
+                  </li>
+                  <li className="flex items-start">
+                    <span className="text-blue-400 mr-1.5">•</span>
+                    <span><strong>Soulful Metaphors</strong> that illuminate truths hiding in plain sight</span>
+                  </li>
+                  <li className="flex items-start">
+                    <span className="text-blue-400 mr-1.5">•</span>
+                    <span><strong>Poetic Guidance</strong> flowing from real emotion, not polished perfection</span>
+                  </li>
+                </ul>
+                <p className="mt-2 text-xs italic text-blue-500 font-medium">Like a voice note from your wisest, most poetic friend—raw, reflective, and grounded in what your heart already knows but hasn&apos;t fully heard.</p>
+              </div>
+            </div>
+          </Card>
+
+          {/* Side Reflection Boxes */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 md:gap-4 mb-8">
+            {/* Misaligned Box */}
+            <Card className="p-4 md:p-5 bg-gradient-to-br from-slate-50 to-gray-100 border-slate-200 shadow-md">
+              <div className="flex items-start md:items-center mb-3">
+                <div className="bg-slate-200 p-2 rounded-full mr-2 shrink-0">
+                  <HelpCircleIcon className="h-4 w-4 sm:h-5 sm:w-5 text-slate-600" />
+                </div>
+                <div>
+                  <h3 className="text-xs sm:text-sm font-bold text-slate-700 flex items-center">
+                    Where Are You Failing Each Other?
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="ml-1 cursor-help">
+                            <Info className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-slate-400" />
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent className="w-72">
+                          <p className="text-xs">AI will provide candid feedback on your ability to identify and articulate relationship problems. No sugarcoating - just honest assessment.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </h3>
+                </div>
+              </div>
+              <div className="bg-white bg-opacity-80 rounded-lg p-2 sm:p-3 border border-slate-200 border-dashed">
+                <textarea
+                  className="w-full min-h-[100px] sm:min-h-[120px] p-1 sm:p-2 text-sm text-slate-700 bg-transparent resize-none focus:outline-none"
+                  placeholder="Be brutally honest - what's truly not working? Where do you and your partner fundamentally clash?"
+                  value={misalignedText}
+                  onChange={(e) => setMisalignedText(e.target.value)}
+                />
+              </div>
+              <div className="mt-2 sm:mt-3">
+                <div className="flex items-center justify-between mb-1 sm:mb-1.5">
+                  <div className="flex items-center">
+                    <div className="text-xs text-slate-500 mr-1">Reflection Score</div>
+                    {isAnalyzing.misaligned && (
+                      <Loader2 className="h-3 w-3 text-slate-400 animate-spin" />
+                    )}
+                  </div>
+                  <div className="flex items-center">
+                    <Progress value={getMisalignedScore()} className="h-1.5 sm:h-2 w-16 sm:w-24 mr-2" />
+                    <span className="text-xs font-medium text-slate-700">{getMisalignedScore()}%</span>
+                  </div>
+                </div>                {misalignedAnalysis.insights && !isAnalyzing.misaligned && (
+                  <div className="text-xs text-slate-600 border-t border-slate-100 pt-1.5 mt-1.5">
+                    <span className="font-medium text-slate-700">Honest Assessment:</span> {misalignedAnalysis.insights}
+                  </div>
+                )}
+
+                {misalignedAnalysis.suggestions && !isAnalyzing.misaligned && misalignedAnalysis.score > 0 && (
+                  <div className="text-xs text-slate-600 mt-1.5">
+                    <span className="font-medium text-slate-700">Direct Feedback:</span> {misalignedAnalysis.suggestions}
+                  </div>
+                )}
+              </div>
+            </Card>
+
+            {/* Emerging Box */}
+            <Card className="p-4 md:p-5 bg-gradient-to-br from-emerald-50 to-green-100 border-emerald-200 shadow-md">
+              <div className="flex items-start md:items-center mb-3">
+                <div className="bg-emerald-200 p-2 rounded-full mr-2 shrink-0">
+                  <LightbulbIcon className="h-4 w-4 sm:h-5 sm:w-5 text-emerald-600" />
+                </div>
+                <div>
+                  <h3 className="text-xs sm:text-sm font-bold text-emerald-700 flex items-center">
+                    Gardens Growing Between Us
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="ml-1 cursor-help">
+                            <Info className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-emerald-400" />
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent className="w-72">
+                          <p className="text-xs">AI will analyze how thoughtful and forward-looking your reflection is about relationship growth and positive developments.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </h3>
+                </div>
+              </div>
+              <div className="bg-white bg-opacity-80 rounded-lg p-2 sm:p-3 border border-emerald-200 border-dashed">
+                <textarea
+                  className="w-full min-h-[100px] sm:min-h-[120px] p-1 sm:p-2 text-sm text-slate-700 bg-transparent resize-none focus:outline-none"
+                  placeholder="What tiny seeds are growing between the cracks of yesterday's struggles? Which flowers are blooming when no one's looking? Notice the green things pushing through concrete..."
+                  value={emergingText}
+                  onChange={(e) => setEmergingText(e.target.value)}
+                />
+              </div>
+              <div className="mt-2 sm:mt-3">
+                <div className="flex items-center justify-between mb-1 sm:mb-1.5">
+                  <div className="flex items-center">
+                    <div className="text-xs text-emerald-600 mr-1">Reflection Score</div>
+                    {isAnalyzing.emerging && (
+                      <Loader2 className="h-3 w-3 text-emerald-400 animate-spin" />
+                    )}
+                  </div>
+                  <div className="flex items-center">
+                    <Progress
+                      value={getEmergingScore()}
+                      className="h-1.5 sm:h-2 w-16 sm:w-24 mr-2 bg-emerald-100"
+                      indicatorClassName="bg-emerald-500"
+                    />
+                    <span className="text-xs font-medium text-emerald-700">{getEmergingScore()}%</span>
+                  </div>
+                </div>                {emergingAnalysis.insights && !isAnalyzing.emerging && (
+                  <div className="text-xs text-emerald-700 border-t border-emerald-100 pt-1.5 mt-1.5">
+                    <span className="font-medium">Truth Check:</span> {emergingAnalysis.insights}
+                  </div>
+                )}
+
+                {emergingAnalysis.suggestions && !isAnalyzing.emerging && emergingAnalysis.score > 0 && (
+                  <div className="text-xs text-emerald-700 mt-1.5">
+                    <span className="font-medium">Growth Challenge:</span> {emergingAnalysis.suggestions}
+                  </div>
+                )}
+              </div>
+            </Card>
+
+            {/* Uncertain Box */}
+            <Card className="p-4 md:p-5 bg-gradient-to-br from-rose-50 to-pink-100 border-rose-200 shadow-md">
+              <div className="flex items-start md:items-center mb-3">
+                <div className="bg-rose-200 p-2 rounded-full mr-2 shrink-0">
+                  <HelpCircleIcon className="h-4 w-4 sm:h-5 sm:w-5 text-rose-600" />
+                </div>
+                <div>
+                  <h3 className="text-xs sm:text-sm font-bold text-rose-700 flex items-center">
+                    The Space Between Words & Truth
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="ml-1 cursor-help">
+                            <Info className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-rose-400" />
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent className="w-72">
+                          <p className="text-xs">AI will directly assess whether your uncertainty reflects genuine questions or if you&apos;re avoiding uncomfortable truths about your relationship.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </h3>
+                </div>
+              </div>
+              <div className="bg-white bg-opacity-80 rounded-lg p-2 sm:p-3 border border-rose-200 border-dashed">
+                <textarea
+                  className="w-full min-h-[100px] sm:min-h-[120px] p-1 sm:p-2 text-sm text-slate-700 bg-transparent resize-none focus:outline-none"
+                  placeholder="Sometimes we dress our deepest knowings in question marks, like putting coats on truths that want to be naked. What's whispering beneath your maybes?"
+                  value={uncertainText}
+                  onChange={(e) => setUncertainText(e.target.value)}
+                />
+              </div>
+              <div className="mt-2 sm:mt-3">
+                <div className="flex items-center justify-between mb-1 sm:mb-1.5">
+                  <div className="flex items-center">
+                    <div className="text-xs text-rose-600 mr-1">Reflection Score</div>
+                    {isAnalyzing.uncertain && (
+                      <Loader2 className="h-3 w-3 text-rose-400 animate-spin" />
+                    )}
+                  </div>
+                  <div className="flex items-center">
+                    <Progress
+                      value={getUncertainScore()}
+                      className="h-1.5 sm:h-2 w-16 sm:w-24 mr-2 bg-rose-100"
+                      indicatorClassName="bg-rose-500"
+                    />
+                    <span className="text-xs font-medium text-rose-700">{getUncertainScore()}%</span>
+                  </div>
+                </div>                {uncertainAnalysis.insights && !isAnalyzing.uncertain && (
+                  <div className="text-xs text-rose-700 border-t border-rose-100 pt-1.5 mt-1.5">
+                    <span className="font-medium">Facing Reality:</span> {uncertainAnalysis.insights}
+                  </div>
+                )}
+
+                {uncertainAnalysis.suggestions && !isAnalyzing.uncertain && uncertainAnalysis.score > 0 && (
+                  <div className="text-xs text-rose-700 mt-1.5">
+                    <span className="font-medium">Clarity Call:</span> {uncertainAnalysis.suggestions}
+                  </div>
+                )}
+              </div>
+            </Card>
+          </div>
+
+          {/* Overall Reflection Score */}
+          <div className="mb-6 md:mb-8 bg-white rounded-lg p-3 md:p-4 shadow-md border border-purple-200">
+            <div className="flex items-start md:items-center justify-between mb-2">
+              <div className="flex items-start md:items-center">
+                <CheckCircleIcon className="h-4 w-4 md:h-5 md:w-5 text-purple-600 mr-2 mt-0.5 md:mt-0" />
+                <h3 className="text-base md:text-lg font-bold text-purple-800">Overall Reflection Depth</h3>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="ml-1 cursor-help">
+                        <Info className="h-3.5 w-3.5 md:h-4 md:w-4 text-purple-400" />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent className="w-72">
+                      <p className="text-xs">This score is calculated by analyzing all three reflection areas using AI. The Claude 3 Opus model evaluates the depth, specificity, and insight quality of your reflections.</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+              <div className="text-lg md:text-xl font-bold text-purple-800">{getOverallScore()}%</div>
+            </div>
+            <Progress value={getOverallScore()} className="h-2 md:h-3 bg-purple-100" indicatorClassName="bg-purple-600" />
+
+            <div className="flex items-center mt-2">
+              <div className="bg-purple-100 text-purple-800 font-medium px-1.5 md:px-2 py-0.5 md:py-1 rounded text-xs">
+                {getOverallStage()}
+              </div>
+              {(isAnalyzing.misaligned || isAnalyzing.emerging || isAnalyzing.uncertain) && (
+                <div className="ml-2 flex items-center text-xs text-purple-600">
+                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                  Analyzing reflections...
+                </div>
+              )}
+            </div>
+
+            <p className="text-xs md:text-sm text-slate-700 mt-2 font-medium">
+              {getOverallScore() < 30 && "You're skimming the surface. Dig deeper and confront the uncomfortable truths you've been avoiding."}
+              {getOverallScore() >= 30 &&
+                getOverallScore() < 70 &&
+                "You're making progress but still protecting yourself from some harder truths. Push further."}
+              {getOverallScore() >= 70 && "Strong introspection, but challenge yourself: what final barriers to complete honesty remain?"}
+            </p>
+          </div>
+
+          {/* Direct Therapeutic Feedback - Consolidated */}
+          <div className="mb-6 md:mb-8">
+            <div className="flex items-start md:items-center justify-between mb-3 md:mb-4">
+              <h3 className="text-lg md:text-xl font-bold text-slate-800 flex items-center">
+                <AlertTriangleIcon className="h-4 w-4 md:h-5 md:w-5 mr-2 text-amber-500" />
+                Direct Therapeutic Feedback
+              </h3>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="cursor-help">
+                      <Info className="h-3.5 w-3.5 md:h-4 md:w-4 text-slate-400" />
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent className="w-72 md:w-80">
+                    <p className="text-xs">Soulful reflections from Claude 3 Opus model - like receiving a voice note from someone who knows your heart&apos;s hidden corners. Poetry mixed with truth, raw but nurturing, like rain that&apos;s both gentle and persistent.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+
+            <div className="text-xs md:text-sm text-slate-700 italic mb-4 md:mb-6 border-l-2 border-amber-300 pl-3">
+              These words flow from the heart—raw, unfiltered, like voice notes to yourself. They might flutter against closed windows of your soul, but that's where the light gets in.
+            </div>
+
+            {(isAnalyzing.misaligned || isAnalyzing.emerging || isAnalyzing.uncertain) ? (
+              <div className="flex items-center justify-center p-6 md:p-12 border border-dashed border-amber-200 rounded-lg bg-amber-50">
+                <Loader2 className="h-5 w-5 md:h-6 md:w-6 text-amber-400 mr-2 md:mr-3 animate-spin" />
+                <p className="text-sm md:text-base text-amber-600 font-medium">Analyzing your relationships patterns...</p>
+              </div>
+            ) : (
+              <InsightCard
+                type="wisdom"
+                title={getOverallScore() < 30 ? "Beginning Your Journey" : getOverallScore() < 60 ? "Walking Your Path" : getOverallScore() < 80 ? "Deepening Your Awareness" : "Soul-Level Insight"}
+                content={generatePersonalizedStynerFeedback(
+                  getOverallScore(),
+                  misalignedText,
+                  emergingText,
+                  uncertainText,
+                  suggestions
+                )}
+                authorNote="Your Proverbs 18:24 Heart Mirror"
+                className="w-full"
+              />
+            )}
+          </div>
+
+          {/* Insight Summary - Enhanced */}
+          <Card className="p-4 md:p-8 bg-gradient-to-br from-purple-50 to-indigo-100 border-purple-200 mb-6 md:mb-8 shadow-lg">
+            <div className="flex items-start md:items-center mb-3 md:mb-4">
+              <div className="bg-purple-200 p-2 md:p-3 rounded-full mr-2 md:mr-3 shrink-0">
+                <LightbulbIcon className="h-5 w-5 md:h-6 md:w-6 text-purple-600" />
+              </div>
+              <div>
+                <h2 className="text-xl md:text-2xl font-bold text-purple-800">Example Insight Summary</h2>
+                <p className="text-xs md:text-sm text-purple-600 italic mt-1">What this reflection teaches me about us...</p>
+              </div>
+            </div>
+            <div className="bg-white bg-opacity-90 rounded-lg p-3 md:p-5 border border-purple-200 shadow-sm">
+              <ul className="space-y-2 md:space-y-3 text-slate-700 text-sm md:text-base">
+                <li className="flex items-start">
+                  <span className="text-purple-500 mr-2 mt-1">•</span>
+                  We both show up in deeply meaningful ways — but we carry different weights.
+                </li>
+                <li className="flex items-start">
+                  <span className="text-purple-500 mr-2 mt-1">•</span>
+                  When we lose sight of our shared direction, it hurts more than we admit.
+                </li>
+                <li className="flex items-start">
+                  <span className="text-purple-500 mr-2 mt-1">•</span>
+                  Trust and clarity must stay central — or we drift.
+                </li>
+                <li className="flex items-start">
+                  <span className="text-purple-500 mr-2 mt-1">•</span>
+                  This relationship works best when we both feel seen, steady, and co-creating.
+                </li>
+              </ul>
+            </div>
+          </Card>
+
+          {/* Action Buttons - Enhanced */}
+          <div className="flex flex-wrap justify-center gap-2 md:gap-4">
+            <Button className="text-xs md:text-sm bg-slate-800 hover:bg-slate-700 shadow-md md:shadow-lg transition-all duration-200 hover:shadow-xl py-1.5 md:py-2 h-auto">
+              <PrinterIcon className="h-3.5 w-3.5 md:h-4 md:w-4 mr-1.5 md:mr-2" />
+              Print Reflection
+            </Button>
+            <Button className="text-xs md:text-sm bg-blue-600 hover:bg-blue-500 shadow-md md:shadow-lg transition-all duration-200 hover:shadow-xl py-1.5 md:py-2 h-auto">
+              <FileDown className="h-3.5 w-3.5 md:h-4 md:w-4 mr-1.5 md:mr-2" />
+              Save as PDF
+            </Button>
+            <Button variant="outline" className="text-xs md:text-sm border-slate-300 shadow-md md:shadow-lg transition-all duration-200 hover:shadow-xl py-1.5 md:py-2 h-auto">
+              <Share2Icon className="h-3.5 w-3.5 md:h-4 md:w-4 mr-1.5 md:mr-2" />
+              Share Reflection
+            </Button>
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}
